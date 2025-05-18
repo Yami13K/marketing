@@ -9,3 +9,4 @@ DB_PASS=KaDkAd
 ADMIN=admin@gmail.com
 ADMIN_PASS=adminadmin
 HTTPS=False
+SECURE=False
