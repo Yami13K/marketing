@@ -1,0 +1,81 @@
+version: '3.9'
+
+services:
+  marketing_db:
+    image: postgres:14.2
+    environment:
+      - POSTGRES_DB=marketing
+      - POSTGRES_USER=kadnya
+      - POSTGRES_PASSWORD=KaDkAd
+    container_name: marketing_db
+    ports:
+      - "5435:5432"
+
+
+  test:
+    image: marketing:latest
+    volumes:
+      - .:/home/kad-dev
+    env_file:
+      - marketing/env/.${ENV_TYPE:-dev}
+    depends_on:
+      - marketing_db
+    user: root
+    command: python manage.py test
+
+
+  lint:
+    image: marketing:latest
+    volumes:
+      - .:/home/kad-dev
+    environment:
+      PYTHONPATH: /home/kad-dev
+    command: flake8
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+
+  celery:
+    image: marketing:latest
+    volumes:
+      - .:/home/kad-dev
+    command: celery -A marketing worker -Q marketing --loglevel=info
+    depends_on:
+      - redis
+    env_file:
+      - marketing/env/.${ENV_TYPE:-dev}
+
+  app:
+    build:
+      context: .
+    image: marketing:latest
+    container_name: marketing_app
+    ports:
+      - "8003:8000"
+    volumes:
+      - .:/home/kad-dev
+    env_file:
+      - marketing/env/.${ENV_TYPE:-dev}
+    depends_on:
+      - marketing_db
+    user: root
+    command: >
+      sh -c "
+             python manage.py makemigrations && 
+             python manage.py migrate &&
+             gunicorn marketing.wsgi:application -b 0.0.0.0:8000 -w 1 --reload
+             "
+    restart: always
+
+
+
+
+volumes:
+  postgres-data:
+  static:
+  media:
+
+#networks:

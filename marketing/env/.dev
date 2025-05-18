@@ -1,0 +1,11 @@
+PHASE=dev
+SECRET_KEY=mydevsecretkey
+DEBUG=True
+ALLOWED_HOSTS=localhost
+DB_HOST=marketing_db
+DB_NAME=marketing
+DB_USER=kadnya
+DB_PASS=KaDkAd
+ADMIN=admin@gmail.com
+ADMIN_PASS=adminadmin
+HTTPS=False
