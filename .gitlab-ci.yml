@@ -1,0 +1,66 @@
+image: docker:latest
+
+
+services:
+  - docker:dind  # Enables Docker-in-Docker for building images
+
+stages:
+  - build
+  - deploy
+
+variables:
+  DOCKER_HOST: tcp://docker:2375
+  IMAGE_TAG: $CI_COMMIT_REF_SLUG-$CI_COMMIT_SHORT_SHA  # Tag with branch name and commit SHA
+
+
+before_script:
+  - apk add --no-cache curl jq aws-cli  # Install AWS CLI
+  - echo "Checking AWS CLI version..."
+  - aws --version
+  - echo "Checking Docker version..."
+  - docker --version
+
+# Reusable template for building and pushing Docker images
+.build_template:
+  script:
+    - echo "Logging in to Amazon ECR..."
+    - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+    - echo "Building Docker image..."
+    - docker build -t $ECR_REPOSITORY_NAME:$IMAGE_TAG .
+    - echo "Tagging Docker image..."
+    - docker tag $ECR_REPOSITORY_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:$IMAGE_TAG
+    - echo "Pushing Docker image to ECR..."
+    - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:$IMAGE_TAG
+
+
+build_dev:
+  extends: .build_template
+  stage: build
+  environment:
+    name: dev
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev"
+
+
+
+deploy_dev:
+  stage: deploy
+  environment:
+    name: dev
+  image: alpine:latest
+  before_script:
+    # Install SSH and Docker Compose
+    - apk add --no-cache openssh-client  # Install ssh-keyscan
+    - mkdir -p ~/.ssh
+    - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - ssh-keyscan $SERVER_IP >> ~/.ssh/known_hosts
+  script:
+    # Update the docker-compose.yml file with the new image tags
+    - echo hi
+    - echo $ECR_REPOSITORY_NAME
+    - ssh $SSH_USER@$SERVER_IP "sed -i \"s|\(kadnya-dev-backend:\).*|\1$IMAGE_TAG|g\" kadnya-apps/docker-compose.yml"
+    # Pull the latest images and restart services
+    - ssh $SSH_USER@$SERVER_IP "aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com && docker-compose -f /home/ubuntu/kadnya-apps/docker-compose.yml pull kadnya-dev-backend-marketing  && docker-compose -f /home/ubuntu/kadnya-apps/docker-compose.yml down --remove-orphans && docker-compose -f /home/ubuntu/kadnya-apps/docker-compose.yml up -d"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev"
